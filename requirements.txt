@@ -1,0 +1,3 @@
+# Installs everything for both projects (versions pinned in each subfolder).
+-r demo/requirements.txt
+-r briefing/requirements.txt

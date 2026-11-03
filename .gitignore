@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Runtime output
+*.log
+logs/
+briefings/
+briefing-*.md
+run_*.md
+run_*.err
+client_output.txt
+server.pid
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+.env
