@@ -42,7 +42,7 @@ score`, and a `sources` status block) plus a `text/markdown` part.
 ## Sources and ranking
 | Section | Sources | Ranking signal |
 |---|---|---|
-| Open source | Hacker News (Algolia API, filtered for open-source signals), GitHub search (repos created in last 7 days by stars, unauthenticated: 1 request/briefing), RSS: LWN.net, GitHub Blog, Linux Foundation, Opensource.com, The New Stack (keyword-filtered), Phoronix; r/opensource attempted (Reddit currently returns 403 without auth) | 0.65 × popularity (log HN points / stars; RSS baseline) + 0.35 × recency + cross-source bonus |
+| Open source | Hacker News (Algolia API, filtered for open-source signals), GitHub search (repos created in last 7 days by stars, unauthenticated: 1 request/briefing), RSS: LWN.net, GitHub Blog, Linux Foundation, Opensource.com, The New Stack (keyword-filtered), Phoronix; r/opensource (RSS/Atom first, JSON fallback; failures show as unavailable) | 0.65 × popularity (log HN points / stars; RSS baseline) + 0.35 × recency + cross-source bonus |
 | World | ABC News Just In & World, Guardian Australia & World, BBC World, Al Jazeera, DW, NPR World, SBS News World | 0.7 × recency + 0.12 per *other outlet* with the same story (max 3) + small Australia bonus |
 | Politics | Guardian Australian Politics, BBC Politics, Guardian UK Politics, Guardian US Politics, NPR Politics | same as World |
 

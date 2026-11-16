@@ -395,26 +395,118 @@ async def fetch_feed(client: httpx.AsyncClient, q: Query, feed: Feed) -> list[Ne
     return items
 
 
-async def fetch_reddit(client: httpx.AsyncClient, q: Query) -> list[NewsItem]:
-    try:
-        r = await client.get("https://www.reddit.com/r/opensource/top.json",
-                             params={"t": "week" if q.hours > 24 else "day", "limit": 25})
-    except httpx.HTTPError as e:
-        raise RuntimeError(f"Reddit unreachable ({type(e).__name__}); "
-                           "unauthenticated JSON access is usually blocked") from e
-    if r.status_code != 200:
-        raise RuntimeError(f"Reddit returned HTTP {r.status_code} (unauthenticated access blocked)")
-    items = []
-    for c in r.json().get("data", {}).get("children", []):
-        d = c.get("data", {})
-        permalink = "https://www.reddit.com" + d.get("permalink", "")
+# Reddit's unauthenticated JSON API often times out or returns 403. Try the
+# public Atom/RSS feed first, then fall back to JSON. Any remaining failure
+# is reported as a quiet "unavailable" status so the rest of the briefing
+# is unaffected.
+REDDIT_TIMEOUT = httpx.Timeout(8.0, connect=5.0)
+REDDIT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/atom+xml, application/rss+xml, application/json, text/xml, */*",
+}
+_HREF_RE = re.compile(r"""href=["'](https?://[^"']+)["']""", re.I)
+
+
+def reddit_rss_url(subreddit: str) -> str:
+    return f"https://www.reddit.com/r/{subreddit}/.rss"
+
+
+def reddit_json_url(subreddit: str) -> str:
+    return f"https://www.reddit.com/r/{subreddit}/top.json"
+
+
+def _reddit_entry_html(entry) -> str:
+    parts = [entry.get("summary") or ""]
+    for c in entry.get("content") or []:
+        parts.append(c.get("value") or "")
+    return " ".join(parts)
+
+
+def _reddit_urls(entry) -> tuple[str, str]:
+    """Return (permalink, article url) from an RSS/Atom entry."""
+    link = (entry.get("link") or "").strip()
+    entry_id = (entry.get("id") or "").strip()
+    permalink = entry_id if entry_id.startswith("http") else link
+    url = link or permalink
+    for href in _HREF_RE.findall(_reddit_entry_html(entry)):
+        if "reddit.com" not in href and "redd.it" not in href:
+            url = href
+            break
+    return permalink or url, url or permalink
+
+
+def _items_from_reddit_feed(content: bytes, source: str) -> list[NewsItem] | None:
+    """Parse RSS/Atom. None means the body was not a usable feed (caller should fall back)."""
+    parsed = feedparser.parse(content)
+    if (parsed.bozo and not parsed.entries) or (not parsed.entries and not parsed.get("version")):
+        return None
+    items: list[NewsItem] = []
+    for e in parsed.entries:
+        published = _ts(e.get("published_parsed") or e.get("updated_parsed"))
+        title = (e.get("title") or "").strip()
+        permalink, url = _reddit_urls(e)
+        if not (published and title and url):
+            continue
         items.append(NewsItem(
-            title=d.get("title", ""), url=d.get("url") or permalink, source="r/opensource",
-            published=datetime.fromtimestamp(d.get("created_utc", 0), tz=timezone.utc),
-            kind="reddit", points=int(d.get("score") or 0),
-            comments=int(d.get("num_comments") or 0), discussion_url=permalink,
+            title=title, url=url, source=source, published=published,
+            kind="reddit", discussion_url=permalink or url,
         ))
     return items
+
+
+def _items_from_reddit_json(payload: dict, source: str) -> list[NewsItem]:
+    items: list[NewsItem] = []
+    children = payload.get("data", {}).get("children", []) if isinstance(payload, dict) else []
+    for c in children:
+        d = (c or {}).get("data") or {}
+        title = (d.get("title") or "").strip()
+        permalink = d.get("permalink") or ""
+        if permalink and not permalink.startswith("http"):
+            permalink = "https://www.reddit.com" + permalink
+        url = (d.get("url") or permalink or "").strip()
+        if not title or not url:
+            continue
+        try:
+            published = datetime.fromtimestamp(float(d["created_utc"]), tz=timezone.utc)
+        except (KeyError, TypeError, ValueError, OverflowError, OSError):
+            continue
+        items.append(NewsItem(
+            title=title, url=url, source=source, published=published,
+            kind="reddit", points=int(d.get("score") or 0),
+            comments=int(d.get("num_comments") or 0), discussion_url=permalink or url,
+        ))
+    return items
+
+
+async def _reddit_get(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+    return await client.get(url, headers=REDDIT_HEADERS, timeout=REDDIT_TIMEOUT, **kwargs)
+
+
+async def fetch_reddit_subreddit(client: httpx.AsyncClient, q: Query, subreddit: str) -> list[NewsItem]:
+    """Fetch one subreddit: RSS/Atom first, then JSON. Raises RuntimeError('unavailable')."""
+    source = f"r/{subreddit}"
+    try:
+        r = await _reddit_get(client, reddit_rss_url(subreddit))
+        if r.status_code == 200:
+            items = _items_from_reddit_feed(r.content, source)
+            if items is not None:
+                return items
+    except Exception:  # noqa: BLE001 - fall back to JSON, then report quietly
+        pass
+    try:
+        r = await _reddit_get(
+            client, reddit_json_url(subreddit),
+            params={"t": "week" if q.hours > 24 else "day", "limit": 25},
+        )
+        if r.status_code == 200:
+            return _items_from_reddit_json(r.json(), source)
+    except Exception:  # noqa: BLE001 - report quietly
+        pass
+    raise RuntimeError("unavailable")
+
+
+async def fetch_reddit(client: httpx.AsyncClient, q: Query) -> list[NewsItem]:
+    return await fetch_reddit_subreddit(client, q, "opensource")
 
 
 SourceFn = Callable[[httpx.AsyncClient, Query], Awaitable[list[NewsItem]]]

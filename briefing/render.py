@@ -115,7 +115,14 @@ def render_markdown(payload: dict, top: int | None = None) -> str:
             parts = []
             for name in names:
                 s = src[name]
-                parts.append(f"{name} ✅ {int(s['fetched'])} fetched, {int(s.get('in_briefing', 0))} used"
-                             if s["ok"] else f"{name} ❌ ({s['error'][:70]})")
+                if s["ok"]:
+                    parts.append(f"{name} ✅ {int(s['fetched'])} fetched, {int(s.get('in_briefing', 0))} used")
+                else:
+                    err = (s.get("error") or "").strip()
+                    if err == "unavailable" or err.endswith(": unavailable"):
+                        err = "unavailable"
+                    else:
+                        err = err[:70]
+                    parts.append(f"{name} ❌ ({err})")
             lines.append(f"- {SECTION_TITLES[sec]}: " + "; ".join(parts))
     return "\n".join(lines).rstrip() + "\n"
