@@ -149,104 +149,24 @@ async def test_fetch_feed_parses_and_filters():
     assert [i.url for i in oss] == ["https://ex.com/k8s"]
 
 
-REDDIT_RSS = b"""<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>opensource</title>
-  <updated>2026-11-16T01:00:00Z</updated>
-  <entry>
-    <id>https://www.reddit.com/r/opensource/comments/abc123/cool_project/</id>
-    <link href="https://www.reddit.com/r/opensource/comments/abc123/cool_project/"/>
-    <updated>2026-11-16T01:00:00Z</updated>
-    <title>Cool open source project</title>
-    <content type="html">&lt;a href="https://example.com/project"&gt;example.com&lt;/a&gt;</content>
-  </entry>
-  <entry>
-    <id>https://www.reddit.com/r/opensource/comments/nodate/x/</id>
-    <link href="https://www.reddit.com/r/opensource/comments/nodate/x/"/>
-    <title>No date</title>
-  </entry>
-</feed>
-"""
-
-REDDIT_JSON = {
-    "data": {"children": [{
-        "data": {
-            "title": "JSON fallback post",
-            "url": "https://example.com/json-post",
-            "permalink": "/r/opensource/comments/xyz/json_fallback_post/",
-            "created_utc": datetime(2026, 11, 16, 1, 0, tzinfo=timezone.utc).timestamp(),
-            "score": 42,
-            "num_comments": 7,
-        }
-    }]}
-}
-
-RSS_URL = "https://www.reddit.com/r/opensource/.rss"
-JSON_URL = "https://www.reddit.com/r/opensource/top.json"
-
-
-@respx.mock
-async def test_reddit_rss_success():
-    respx.get(RSS_URL).mock(return_value=httpx.Response(
-        200, content=REDDIT_RSS, headers={"content-type": "application/atom+xml"}))
-    respx.get(JSON_URL).mock(return_value=httpx.Response(500))
-    async with httpx.AsyncClient() as c:
-        out = await nc.fetch_reddit(c, Query())
-    assert len(out) == 1
-    assert out[0].title == "Cool open source project"
-    assert out[0].url == "https://example.com/project"
-    assert out[0].source == "r/opensource" and out[0].kind == "reddit"
-    assert out[0].discussion_url == "https://www.reddit.com/r/opensource/comments/abc123/cool_project/"
-    assert out[0].published == datetime(2026, 11, 16, 1, 0, tzinfo=timezone.utc)
-
-
-@respx.mock
-async def test_reddit_json_fallback_when_rss_fails():
-    respx.get(RSS_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
-    respx.get(JSON_URL).mock(return_value=httpx.Response(200, json=REDDIT_JSON))
-    async with httpx.AsyncClient() as c:
-        out = await nc.fetch_reddit(c, Query())
-    assert [i.title for i in out] == ["JSON fallback post"]
-    assert out[0].url == "https://example.com/json-post"
-    assert out[0].points == 42 and out[0].comments == 7
-    assert out[0].discussion_url == "https://www.reddit.com/r/opensource/comments/xyz/json_fallback_post/"
-
-
-@respx.mock
-async def test_reddit_timeout_is_quiet_unavailable():
-    respx.get(RSS_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
-    respx.get(JSON_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
-    async with httpx.AsyncClient() as c:
-        with pytest.raises(RuntimeError, match="^unavailable$"):
-            await nc.fetch_reddit(c, Query())
-
-
-@respx.mock
-async def test_reddit_403_is_quiet_unavailable():
-    respx.get(RSS_URL).mock(return_value=httpx.Response(403))
-    respx.get(JSON_URL).mock(return_value=httpx.Response(403))
-    async with httpx.AsyncClient() as c:
-        with pytest.raises(RuntimeError, match="^unavailable$"):
-            await nc.fetch_reddit(c, Query())
-
-
-@respx.mock
-async def test_reddit_timeout_footer_is_quiet_and_briefing_continues():
-    respx.get(RSS_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
-    respx.get(JSON_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
+async def test_unavailable_footer_is_quiet_and_briefing_continues():
     now = datetime.now(timezone.utc)
 
     async def good(c, q):
         return [NewsItem("Linux 7.0 released", "https://k/7", "Good", now, "rss")]
 
+    async def gone(c, q):
+        raise RuntimeError("unavailable")
+
     async with httpx.AsyncClient() as c:
         items, status = await nc.gather_news(
             Query(), client=c,
-            sources=[("Good", good), ("r/opensource", nc.fetch_reddit)])
+            sources=[("Good", good), ("Gone", gone)])
     assert [i.url for i in items] == ["https://k/7"]
     assert status["Good"]["ok"]
-    assert not status["r/opensource"]["ok"]
-    assert status["r/opensource"]["error"] == "RuntimeError: unavailable"
+    assert not status["Gone"]["ok"]
+    assert status["Gone"]["error"] == "RuntimeError: unavailable"
+    status["Gone"]["section"] = "opensource"
 
     from render import render_markdown
     md = render_markdown({
@@ -255,7 +175,7 @@ async def test_reddit_timeout_footer_is_quiet_and_briefing_continues():
         "items": [i.to_dict() for i in items],
         "sources": status,
     })
-    assert "r/opensource ❌ (unavailable)" in md
+    assert "Gone ❌ (unavailable)" in md
     assert "ConnectTimeout" not in md
     assert "Linux 7.0 released" in md
 

@@ -1,4 +1,4 @@
-"""A2A server: Daily Briefing agent — open source, world and politics news (a2a-sdk 1.3.0).
+"""A2A server: Daily Briefing agent — open source, world and politics news (a2a-sdk 1.3.1).
 
 Input: optional free text, e.g. "", "rust", "AI last 48h", "topic=kubernetes hours=72 limit=20",
 "sections=opensource,world,politics" (default: all three; "sections=opensource" = open source only).

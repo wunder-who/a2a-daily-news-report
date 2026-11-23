@@ -39,6 +39,7 @@ def test_all_sources_respects_sections():
     assert "Hacker News" not in names and "BBC World" not in names
     os_names = [n for n, _ in nc.all_sources(Query(sections=["opensource"]))]
     assert "Hacker News" in os_names and "BBC World" not in os_names
+    assert "r/opensource" not in os_names
 
 
 NEWS_RSS = b"""<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>
