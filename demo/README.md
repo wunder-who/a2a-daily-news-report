@@ -1,6 +1,6 @@
 # Minimal A2A (Agent2Agent) demo — Python
 
-A tiny A2A agent + client using the official `a2a-sdk` (v1.3.0, protocol 1.0).
+A tiny A2A agent + client using the official `a2a-sdk` (v1.3.1, protocol 1.0).
 No LLM or API keys: the agent greets you and reverses your text.
 
 - `server.py` — agent server on http://127.0.0.1:9999 (JSON-RPC binding).

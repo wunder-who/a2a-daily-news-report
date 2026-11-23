@@ -1,7 +1,7 @@
 # A2A agents
 
 Small Python projects built on the [Agent2Agent (A2A) protocol](https://a2a-protocol.org)
-using the official [`a2a-sdk`](https://github.com/a2aproject/a2a-python) (v1.3.0, protocol 1.0).
+using the official [`a2a-sdk`](https://github.com/a2aproject/a2a-python) (v1.3.1, protocol 1.0).
 
 | Folder | What it is | Port |
 |---|---|---|
@@ -27,7 +27,7 @@ See each folder's README for details.
 ## Note on the A2A SDK version
 `a2a-sdk` 1.x changed its API substantially from 0.3 (protobuf types, `create_client`,
 `create_agent_card_routes` / `create_jsonrpc_routes`, `TaskState.TASK_STATE_*`). Code here
-targets 1.3.0; older tutorials using `A2AStarletteApplication` / `A2AClient` will not match.
+targets 1.3.1; older tutorials using `A2AStarletteApplication` / `A2AClient` will not match.
 
 ## License
 Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
